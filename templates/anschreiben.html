@@ -1,0 +1,94 @@
+{% extends "layout.html" %}
+
+{% block title %}Generate Anschreiben (Cover Letter){% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1 class="mb-4">Generate Anschreiben (Cover Letter)</h1>
+    
+    <div class="row">
+        <div class="col-md-12 mb-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Job Description</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('anschreiben_page') }}">
+                        <div class="mb-3">
+                            <label for="job_description" class="form-label">Paste the job description here:</label>
+                            <textarea class="form-control" id="job_description" name="job_description" rows="10" placeholder="Paste the job description here to generate a personalized cover letter based on your resume...">{{ job_description }}</textarea>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">Generate Anschreiben</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    {% if anschreiben %}
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Generated Anschreiben</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="alert alert-light">
+                            <pre class="anschreiben-text" style="white-space: pre-wrap; font-family: Arial, sans-serif;">{{ anschreiben }}</pre>
+                        </div>
+                    </div>
+                    <form method="POST" action="{{ url_for('download_anschreiben') }}">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="format" id="format_txt" value="txt" checked>
+                                    <label class="form-check-label" for="format_txt">
+                                        Text (.txt)
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="format" id="format_pdf" value="pdf">
+                                    <label class="form-check-label" for="format_pdf">
+                                        PDF (.pdf)
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 text-end">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-download"></i> Download Anschreiben
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">Your Resume (For Reference)</h5>
+                </div>
+                <div class="card-body">
+                    <pre class="resume-text" style="white-space: pre-wrap; font-family: Arial, sans-serif;">{{ resume_text }}</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="mt-4 mb-5">
+        <a href="{{ url_for('results') }}" class="btn btn-outline-primary me-2">
+            <i class="fas fa-arrow-left"></i> Back to Resume Corrections
+        </a>
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-home"></i> Start Over
+        </a>
+    </div>
+</div>
+{% endblock %}

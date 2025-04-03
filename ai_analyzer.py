@@ -6,6 +6,7 @@ import requests
 
 # Hugging Face API configuration
 HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/prithivida/grammar_error_correcter_v1"
+HUGGINGFACE_TEXT_GEN_API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2"
 HUGGINGFACE_API_KEY = os.environ.get("HUGGINGFACE_API_KEY")
 
 # Headers for Hugging Face API request
@@ -113,8 +114,24 @@ def analyze_segment(segment, full_text):
         # Process API response
         corrected_text = response.json()[0]["generated_text"]
         
+        # Регулярное выражение для игнорирования изменений в точках, 
+        # где модель меняет только точку или пробел + точку
+        import re
+        segment_normalized = re.sub(r'\s*\.', '.', segment)
+        corrected_normalized = re.sub(r'\s*\.', '.', corrected_text)
+        
         # If there's a difference between original and corrected text
-        if segment != corrected_text:
+        # except for just period-related changes
+        if segment_normalized != corrected_normalized and segment != corrected_text:
+            # Check if the only difference is periods/dots
+            # Remove dots and compare to avoid false corrections for dots
+            segment_no_dots = segment.replace('.', '')
+            corrected_no_dots = corrected_text.replace('.', '')
+            
+            # If they're identical after removing dots, don't create a correction
+            if segment_no_dots == corrected_no_dots:
+                return corrections
+                
             # Find the position in the full text
             start_pos = full_text.find(segment)
             end_pos = start_pos + len(segment)
@@ -214,3 +231,153 @@ def perform_fallback_analysis(text):
             corrections.append(correction)
     
     return corrections
+
+
+def generate_anschreiben(resume_text, job_description):
+    """
+    Generate a personalized cover letter (Anschreiben) based on resume and job description.
+    
+    Args:
+        resume_text (str): The resume text to analyze
+        job_description (str): The job description text
+        
+    Returns:
+        str: Generated cover letter text
+    """
+    try:
+        # Extract skills and experiences from resume
+        skills = extract_skills_from_resume(resume_text)
+        
+        # Create prompt for Hugging Face API
+        prompt = f"""<s>[INST] Du bist ein professioneller Bewerbungsexperte. Erstelle ein Anschreiben auf Deutsch, basierend auf den folgenden Informationen aus dem Lebenslauf und der Stellenanzeige.
+
+Lebenslauf:
+{resume_text}
+
+Stellenanzeige:
+{job_description}
+
+Verwende die folgenden Anweisungen:
+1. Das Anschreiben sollte formell und professionell sein
+2. Betone die Übereinstimmung der Qualifikationen mit den Anforderungen
+3. Halte es präzise und auf ca. 300-350 Wörter beschränkt
+4. Verwende folgende Struktur:
+   - Anrede (falls in der Stellenanzeige ein Name genannt wird)
+   - Einleitung mit Bezug auf die Stelle
+   - Hauptteil mit Bezug auf den Lebenslauf und passenden Qualifikationen
+   - Motivation für die Stelle
+   - Abschluss mit Gesprächsbereitschaft
+   - Grußformel
+
+Achte auf eine professionelle Sprache und einen überzeugenden Stil.
+[/INST]</s>
+"""
+        
+        # Call Hugging Face API for text generation
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "max_new_tokens": 1024,
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "do_sample": True
+            }
+        }
+        
+        response = requests.post(
+            HUGGINGFACE_TEXT_GEN_API_URL,
+            headers=api_headers,
+            json=payload
+        )
+        
+        response.raise_for_status()
+        
+        # Extract the generated text from the response
+        result = response.json()
+        
+        # Parse and clean the generated anschreiben
+        anschreiben = parse_anschreiben_from_response(result)
+        
+        return anschreiben
+        
+    except Exception as e:
+        logging.error(f"Error generating Anschreiben: {str(e)}")
+        raise Exception(f"Error generating Anschreiben: {str(e)}")
+
+
+def extract_skills_from_resume(resume_text):
+    """
+    Extract skills and key information from resume text.
+    
+    Args:
+        resume_text (str): The resume text to analyze
+        
+    Returns:
+        dict: Extracted skills and information
+    """
+    skills = {
+        "technical_skills": [],
+        "languages": [],
+        "education": [],
+        "experience": []
+    }
+    
+    # Extract languages (simplified approach)
+    language_patterns = [
+        r"\b(?:Deutsch|Englisch|Französisch|Spanisch|Italienisch|Russisch|Chinesisch|Japanisch)\b(?:\s+\((?:Muttersprache|[BCG][12]|fließend|verhandlungssicher|Grundkenntnisse)\))?",
+        r"\b(?:German|English|French|Spanish|Italian|Russian|Chinese|Japanese)\b(?:\s+\((?:native|[BCG][12]|fluent|business|basic)\))?"
+    ]
+    
+    for pattern in language_patterns:
+        matches = re.findall(pattern, resume_text, re.IGNORECASE)
+        skills["languages"].extend(matches)
+    
+    # Extract technical skills (simplified)
+    tech_patterns = [
+        r"\b(?:Java|Python|C\+\+|JavaScript|SQL|PHP|HTML|CSS|React|Angular|Vue|Node\.js|Excel|Word|PowerPoint|SAP)\b"
+    ]
+    
+    for pattern in tech_patterns:
+        matches = re.findall(pattern, resume_text, re.IGNORECASE)
+        skills["technical_skills"].extend(matches)
+    
+    # Remove duplicates
+    skills["languages"] = list(set(skills["languages"]))
+    skills["technical_skills"] = list(set(skills["technical_skills"]))
+    
+    return skills
+
+
+def parse_anschreiben_from_response(api_response):
+    """
+    Parse and clean the Anschreiben from the API response.
+    
+    Args:
+        api_response: The API response to parse
+        
+    Returns:
+        str: Cleaned Anschreiben text
+    """
+    try:
+        # Extract generated text from model response
+        if isinstance(api_response, list) and len(api_response) > 0:
+            generated_text = api_response[0].get("generated_text", "")
+        elif isinstance(api_response, dict):
+            generated_text = api_response.get("generated_text", "")
+        else:
+            generated_text = str(api_response)
+        
+        # Extract the content after [/INST]
+        if "[/INST]" in generated_text:
+            anschreiben = generated_text.split("[/INST]")[1].strip()
+        else:
+            anschreiben = generated_text.strip()
+        
+        # Remove any trailing model tokens or artifacts
+        anschreiben = re.sub(r'<\/s>$', '', anschreiben).strip()
+        
+        return anschreiben
+        
+    except Exception as e:
+        logging.error(f"Error parsing Anschreiben response: {str(e)}")
+        return "Error generating Anschreiben. Please try again."
