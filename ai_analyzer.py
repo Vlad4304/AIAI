@@ -6,8 +6,7 @@ import requests
 
 # Hugging Face API configuration
 HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/prithivida/grammar_error_correcter_v1"
-# Используем ту же модель для коррекции и создания сопроводительных писем, чтобы избежать проблем с доступом
-HUGGINGFACE_TEXT_GEN_API_URL = HUGGINGFACE_API_URL
+HUGGINGFACE_TEXT_GEN_API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2"
 HUGGINGFACE_API_KEY = os.environ.get("HUGGINGFACE_API_KEY")
 
 # Headers for Hugging Face API request
@@ -247,20 +246,72 @@ def generate_anschreiben(resume_text, job_description):
     """
     try:
         # Extract skills and experiences from resume
-        skills_info = extract_skills_from_resume(resume_text)
+        skills = extract_skills_from_resume(resume_text)
         
-        # Extract job details
-        job_title = extract_job_title(job_description)
-        company_name = extract_company_name(job_description)
+        # Create prompt for Hugging Face API
+        prompt = f"""<s>[INST] Du bist ein professioneller Bewerbungsexperte. Erstelle ein Anschreiben auf Deutsch, basierend auf den folgenden Informationen aus dem Lebenslauf und der Stellenanzeige.
+
+Lebenslauf:
+{resume_text}
+
+Stellenanzeige:
+{job_description}
+
+Verwende die folgenden Anweisungen:
+1. Das Anschreiben sollte formell und professionell sein
+2. Betone die Übereinstimmung der Qualifikationen mit den Anforderungen
+3. Halte es präzise und auf ca. 300-350 Wörter beschränkt
+4. Verwende folgende Struktur:
+   - Anrede (falls in der Stellenanzeige ein Name genannt wird)
+   - Einleitung mit Bezug auf die Stelle
+   - Hauptteil mit Bezug auf den Lebenslauf und passenden Qualifikationen
+   - Motivation für die Stelle
+   - Abschluss mit Gesprächsbereitschaft
+   - Grußformel
+
+Achte auf eine professionelle Sprache und einen überzeugenden Stil.
+[/INST]</s>
+"""
         
-        # Create a template-based Anschreiben
-        anschreiben = generate_template_anschreiben(resume_text, job_description, job_title, company_name, skills_info)
+        # Call Hugging Face API for text generation
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "max_new_tokens": 1024,
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "do_sample": True
+            }
+        }
+        
+        response = requests.post(
+            HUGGINGFACE_TEXT_GEN_API_URL,
+            headers=api_headers,
+            json=payload
+        )
+        
+        response.raise_for_status()
+        
+        # Extract the generated text from the response
+        result = response.json()
+        
+        # Parse and clean the generated anschreiben
+        anschreiben = parse_anschreiben_from_response(result)
         
         return anschreiben
         
     except Exception as e:
         logging.error(f"Error generating Anschreiben: {str(e)}")
-        raise Exception(f"Error generating Anschreiben: {str(e)}")
+        # Если API не работает, используем шаблонный подход как запасной вариант
+        try:
+            logging.info("Using template-based approach as fallback")
+            skills_info = extract_skills_from_resume(resume_text)
+            job_title = extract_job_title(job_description)
+            company_name = extract_company_name(job_description)
+            return generate_template_anschreiben(resume_text, job_description, job_title, company_name, skills_info)
+        except Exception as template_err:
+            logging.error(f"Error in template fallback: {str(template_err)}")
+            raise Exception(f"Error generating Anschreiben: {str(e)}")
 
 
 def extract_skills_from_resume(resume_text):
@@ -325,6 +376,41 @@ def extract_skills_from_resume(resume_text):
     skills["experience"] = list(set(skills["experience"]))
     
     return skills
+
+
+def parse_anschreiben_from_response(api_response):
+    """
+    Parse and clean the Anschreiben from the API response.
+    
+    Args:
+        api_response: The API response to parse
+        
+    Returns:
+        str: Cleaned Anschreiben text
+    """
+    try:
+        # Extract generated text from model response
+        if isinstance(api_response, list) and len(api_response) > 0:
+            generated_text = api_response[0].get("generated_text", "")
+        elif isinstance(api_response, dict):
+            generated_text = api_response.get("generated_text", "")
+        else:
+            generated_text = str(api_response)
+        
+        # Extract the content after [/INST]
+        if "[/INST]" in generated_text:
+            anschreiben = generated_text.split("[/INST]")[1].strip()
+        else:
+            anschreiben = generated_text.strip()
+        
+        # Remove any trailing model tokens or artifacts
+        anschreiben = re.sub(r'<\/s>$', '', anschreiben).strip()
+        
+        return anschreiben
+        
+    except Exception as e:
+        logging.error(f"Error parsing Anschreiben response: {str(e)}")
+        return "Error generating Anschreiben. Please try again."
 
 
 def extract_job_title(job_description):
