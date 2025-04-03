@@ -160,20 +160,51 @@ def download():
             pdf.add_page()
             pdf.set_font("Arial", size=12)
             
+            # Clean text of non-compatible characters 
+            # Replace special characters with standard ASCII alternatives
+            clean_text = corrected_text.replace('\u2013', '-')  # en-dash
+            clean_text = clean_text.replace('\u2014', '--')     # em-dash
+            clean_text = clean_text.replace('\u2018', "'")      # left single quote
+            clean_text = clean_text.replace('\u2019', "'")      # right single quote
+            clean_text = clean_text.replace('\u201c', '"')      # left double quote
+            clean_text = clean_text.replace('\u201d', '"')      # right double quote
+            
             # Split the text into lines and add to PDF
-            for line in corrected_text.split('\n'):
-                pdf.multi_cell(0, 10, line)
+            for line in clean_text.split('\n'):
+                # Handle potential Unicode errors with a general filter
+                safe_line = ''.join(c if ord(c) < 128 else '-' for c in line)
+                pdf.multi_cell(0, 10, safe_line)
             
             # Save the PDF to a memory buffer
             file_buffer = io.BytesIO()
             
-            # Get the PDF as a string and convert to bytes
-            pdf_data = pdf.output(dest='S')
-            if isinstance(pdf_data, str):
-                pdf_data = pdf_data.encode('latin-1')
-            
-            file_buffer.write(pdf_data)
-            file_buffer.seek(0)
+            try:
+                # Get the PDF as bytes
+                pdf_data = pdf.output(dest='S')
+                if isinstance(pdf_data, str):
+                    pdf_data = pdf_data.encode('latin-1')
+                
+                file_buffer.write(pdf_data)
+                file_buffer.seek(0)
+            except UnicodeEncodeError:
+                logging.warning("Unicode encode error when creating PDF, using ASCII fallback")
+                # If still encountering unicode errors, fall back to ASCII only
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", size=12)
+                
+                # Use ASCII-only version
+                ascii_text = corrected_text.encode('ascii', 'replace').decode('ascii')
+                for line in ascii_text.split('\n'):
+                    pdf.multi_cell(0, 10, line)
+                
+                pdf_data = pdf.output(dest='S')
+                if isinstance(pdf_data, str):
+                    pdf_data = pdf_data.encode('latin-1')
+                
+                file_buffer = io.BytesIO()
+                file_buffer.write(pdf_data)
+                file_buffer.seek(0)
             
             return send_file(
                 file_buffer,
