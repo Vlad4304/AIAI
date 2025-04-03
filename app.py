@@ -14,6 +14,14 @@ logging.basicConfig(level=logging.DEBUG)
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "default-secret-key")
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+# Store session data in files instead of cookies to handle larger data
+from flask_session import Session
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_FILE_DIR'] = os.path.join(tempfile.gettempdir(), 'flask_sessions')
+os.makedirs(app.config['SESSION_FILE_DIR'], exist_ok=True)
+Session(app)
 
 # Configure upload settings
 ALLOWED_EXTENSIONS = {'pdf', 'docx', 'txt'}
@@ -87,6 +95,12 @@ def analyze():
         corrections = analyze_resume(resume_text)
         
         # Store the resume and corrections in the session
+        # Limit the number of corrections to prevent session size issues
+        max_corrections = 20
+        if len(corrections) > max_corrections:
+            logging.warning(f"Limiting corrections from {len(corrections)} to {max_corrections} to prevent session overflow")
+            corrections = corrections[:max_corrections]
+            
         session['resume_text'] = resume_text
         session['corrections'] = corrections
         
