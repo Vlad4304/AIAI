@@ -6,7 +6,8 @@ import requests
 
 # Hugging Face API configuration
 HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/prithivida/grammar_error_correcter_v1"
-HUGGINGFACE_TEXT_GEN_API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2"
+# Используем ту же модель для коррекции и создания сопроводительных писем, чтобы избежать проблем с доступом
+HUGGINGFACE_TEXT_GEN_API_URL = HUGGINGFACE_API_URL
 HUGGINGFACE_API_KEY = os.environ.get("HUGGINGFACE_API_KEY")
 
 # Headers for Hugging Face API request
