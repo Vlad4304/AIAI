@@ -1,0 +1,230 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h1 class="h4 mb-0"><i class="fas fa-clipboard-check me-2"></i>Resume Analysis Results</h1>
+                <a href="{{ url_for('index') }}" class="btn btn-outline-light btn-sm">
+                    <i class="fas fa-arrow-left me-1"></i> New Analysis
+                </a>
+            </div>
+            <div class="card-body">
+                {% if corrections|length == 0 %}
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle me-2"></i> Your resume looks great! We didn't find any significant issues.
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i> We found <strong>{{ corrections|length }}</strong> suggestions to improve your resume.
+                </div>
+                {% endif %}
+                
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <div class="card mb-4">
+                            <div class="card-header bg-light">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">Corrections</h5>
+                                    <div>
+                                        <button id="selectAllBtn" class="btn btn-outline-primary btn-sm me-2">
+                                            <i class="fas fa-check-square me-1"></i> Select All
+                                        </button>
+                                        <button id="deselectAllBtn" class="btn btn-outline-secondary btn-sm">
+                                            <i class="fas fa-square me-1"></i> Deselect All
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 5%">Apply</th>
+                                                <th style="width: 20%">Original</th>
+                                                <th style="width: 20%">Suggestion</th>
+                                                <th style="width: 40%">Explanation</th>
+                                                <th style="width: 15%">Category</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% if corrections|length == 0 %}
+                                            <tr>
+                                                <td colspan="5" class="text-center py-4">No corrections needed!</td>
+                                            </tr>
+                                            {% else %}
+                                                {% for correction in corrections %}
+                                                <tr>
+                                                    <td class="text-center">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input correction-checkbox" type="checkbox" value="{{ loop.index0 }}" id="correction{{ loop.index }}" checked>
+                                                        </div>
+                                                    </td>
+                                                    <td class="text-danger">{{ correction.original }}</td>
+                                                    <td class="text-success">{{ correction.suggestion }}</td>
+                                                    <td>{{ correction.explanation }}</td>
+                                                    <td>
+                                                        <span class="badge 
+                                                            {% if correction.category == 'spelling' %}bg-danger
+                                                            {% elif correction.category == 'grammar' %}bg-warning
+                                                            {% elif correction.category == 'clarity' %}bg-info
+                                                            {% elif correction.category == 'formatting' %}bg-secondary
+                                                            {% else %}bg-primary{% endif %}">
+                                                            {{ correction.category|capitalize }}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header bg-light">
+                                        <h5 class="mb-0">Original Resume</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <pre id="originalResumeText" class="p-3 bg-dark text-light rounded" style="white-space: pre-wrap;">{{ resume_text }}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header bg-light">
+                                        <h5 class="mb-0">Corrected Resume</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <pre id="correctedResumeText" class="p-3 bg-dark text-light rounded" style="white-space: pre-wrap;">{{ resume_text }}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4">
+                            <button id="applySelectedBtn" class="btn btn-success">
+                                <i class="fas fa-magic me-2"></i>Apply Selected Corrections
+                            </button>
+                            
+                            <form id="downloadForm" action="{{ url_for('download') }}" method="post" class="mt-4">
+                                <input type="hidden" name="corrected_text" id="correctedTextInput">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="form-group mb-3">
+                                            <label class="form-label">Download Format</label>
+                                            <div class="d-flex">
+                                                <div class="form-check me-3">
+                                                    <input class="form-check-input" type="radio" name="format" id="formatTxt" value="txt" checked>
+                                                    <label class="form-check-label" for="formatTxt">
+                                                        <i class="fas fa-file-alt me-1"></i> Text (.txt)
+                                                    </label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="format" id="formatPdf" value="pdf">
+                                                    <label class="form-check-label" for="formatPdf">
+                                                        <i class="fas fa-file-pdf me-1"></i> PDF (.pdf)
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <button type="submit" class="btn btn-primary mt-4">
+                                            <i class="fas fa-download me-2"></i>Download Corrected Resume
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Store the corrections data
+        const corrections = {{ corrections|tojson }};
+        const originalText = document.getElementById('originalResumeText').textContent;
+        let correctedText = originalText;
+        
+        // Reference to elements
+        const selectAllBtn = document.getElementById('selectAllBtn');
+        const deselectAllBtn = document.getElementById('deselectAllBtn');
+        const applySelectedBtn = document.getElementById('applySelectedBtn');
+        const correctedResumeText = document.getElementById('correctedResumeText');
+        const correctedTextInput = document.getElementById('correctedTextInput');
+        const checkboxes = document.querySelectorAll('.correction-checkbox');
+        
+        // Set initial value for the hidden input
+        correctedTextInput.value = originalText;
+        
+        // Select/Deselect all buttons
+        selectAllBtn.addEventListener('click', function() {
+            checkboxes.forEach(checkbox => checkbox.checked = true);
+        });
+        
+        deselectAllBtn.addEventListener('click', function() {
+            checkboxes.forEach(checkbox => checkbox.checked = false);
+        });
+        
+        // Apply selected corrections
+        applySelectedBtn.addEventListener('click', function() {
+            const selectedCorrectionIndices = [];
+            
+            // Get indices of selected corrections
+            checkboxes.forEach(checkbox => {
+                if (checkbox.checked) {
+                    selectedCorrectionIndices.push(parseInt(checkbox.value));
+                }
+            });
+            
+            // Get the selected corrections
+            const selectedCorrections = selectedCorrectionIndices.map(index => corrections[index]);
+            
+            // Send to server to apply corrections
+            fetch('{{ url_for("apply_corrections") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    selected_corrections: selectedCorrections,
+                    resume_text: originalText
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                } else {
+                    // Update the corrected text display
+                    correctedText = data.corrected_text;
+                    correctedResumeText.textContent = correctedText;
+                    correctedTextInput.value = correctedText;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while applying corrections.');
+            });
+        });
+        
+        // Prepare the download form submission
+        document.getElementById('downloadForm').addEventListener('submit', function(e) {
+            // Update the hidden input with the latest corrected text
+            correctedTextInput.value = correctedText;
+        });
+    });
+</script>
+{% endblock %}

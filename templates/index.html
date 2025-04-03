@@ -1,0 +1,146 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h1 class="h4 mb-0"><i class="fas fa-robot me-2"></i>AI-Powered Resume Correction</h1>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="p-3 h-100">
+                            <h2 class="h5 mb-3">How It Works</h2>
+                            <div class="d-flex mb-2">
+                                <div class="me-3 text-primary">
+                                    <i class="fas fa-upload fa-2x"></i>
+                                </div>
+                                <div>
+                                    <strong>Upload or paste</strong> your resume text for analysis
+                                </div>
+                            </div>
+                            <div class="d-flex mb-2">
+                                <div class="me-3 text-primary">
+                                    <i class="fas fa-magic fa-2x"></i>
+                                </div>
+                                <div>
+                                    <strong>AI-powered analysis</strong> identifies areas for improvement
+                                </div>
+                            </div>
+                            <div class="d-flex mb-2">
+                                <div class="me-3 text-primary">
+                                    <i class="fas fa-check-circle fa-2x"></i>
+                                </div>
+                                <div>
+                                    <strong>Review suggestions</strong> and choose which ones to apply
+                                </div>
+                            </div>
+                            <div class="d-flex">
+                                <div class="me-3 text-primary">
+                                    <i class="fas fa-download fa-2x"></i>
+                                </div>
+                                <div>
+                                    <strong>Download</strong> your improved resume
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="p-3 border-start h-100">
+                            <h2 class="h5 mb-3">What We Check</h2>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item bg-transparent"><i class="fas fa-spell-check text-success me-2"></i> Spelling and grammar errors</li>
+                                <li class="list-group-item bg-transparent"><i class="fas fa-align-left text-success me-2"></i> Clarity and conciseness</li>
+                                <li class="list-group-item bg-transparent"><i class="fas fa-user-tie text-success me-2"></i> Professional language and terminology</li>
+                                <li class="list-group-item bg-transparent"><i class="fas fa-table text-success me-2"></i> Formatting issues</li>
+                                <li class="list-group-item bg-transparent"><i class="fas fa-chart-line text-success me-2"></i> Content improvements (achievements, skills)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <form action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data" class="needs-validation" novalidate>
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header bg-light">
+                                    <ul class="nav nav-tabs card-header-tabs" id="inputTabs" role="tablist">
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link active" id="file-tab" data-bs-toggle="tab" data-bs-target="#file-content" type="button" role="tab">Upload Resume</button>
+                                        </li>
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link" id="text-tab" data-bs-toggle="tab" data-bs-target="#text-content" type="button" role="tab">Paste Resume</button>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div class="card-body">
+                                    <div class="tab-content" id="inputTabsContent">
+                                        <div class="tab-pane fade show active" id="file-content" role="tabpanel">
+                                            <div class="mb-3">
+                                                <label for="resume_file" class="form-label">Upload your resume (PDF, DOCX, or TXT)</label>
+                                                <input class="form-control" type="file" id="resume_file" name="resume_file" accept=".pdf,.docx,.txt">
+                                                <div class="form-text">Max file size: 5MB</div>
+                                            </div>
+                                        </div>
+                                        <div class="tab-pane fade" id="text-content" role="tabpanel">
+                                            <div class="mb-3">
+                                                <label for="resume_text" class="form-label">Paste your resume text</label>
+                                                <textarea class="form-control" id="resume_text" name="resume_text" rows="10" placeholder="Paste your resume text here..."></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 col-md-6 mx-auto">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-wand-magic-sparkles me-2"></i>Analyze Resume
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Form validation
+    const form = document.querySelector('form');
+    const fileInput = document.getElementById('resume_file');
+    const textInput = document.getElementById('resume_text');
+    const fileTabs = document.getElementById('inputTabs');
+    
+    form.addEventListener('submit', function(event) {
+        const activeTabId = fileTabs.querySelector('.nav-link.active').getAttribute('id');
+        let isValid = false;
+        
+        if (activeTabId === 'file-tab' && fileInput.files.length > 0) {
+            isValid = true;
+        } else if (activeTabId === 'text-tab' && textInput.value.trim() !== '') {
+            isValid = true;
+        }
+        
+        if (!isValid) {
+            event.preventDefault();
+            event.stopPropagation();
+            alert('Please upload a resume file or paste your resume text.');
+        }
+    });
+    
+    // Clear the other input when switching tabs
+    fileTabs.addEventListener('shown.bs.tab', function(event) {
+        if (event.target.id === 'file-tab') {
+            textInput.value = '';
+        } else if (event.target.id === 'text-tab') {
+            fileInput.value = '';
+        }
+    });
+});
+</script>
+{% endblock %}

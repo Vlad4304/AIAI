@@ -1,0 +1,113 @@
+/* Custom styling for the AI Resume Corrector */
+
+/* Enhance container spacing */
+.container {
+    max-width: 1200px;
+}
+
+/* Card styling */
+.card {
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.card-header {
+    border-radius: calc(0.5rem - 1px) calc(0.5rem - 1px) 0 0;
+}
+
+/* Improved form elements */
+.form-control {
+    padding: 0.75rem 1rem;
+}
+
+.form-control:focus {
+    box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+}
+
+textarea.form-control {
+    min-height: 150px;
+}
+
+/* File input styling */
+input[type="file"] {
+    padding: 0.5rem;
+}
+
+/* Pre tag for resume display */
+pre {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+/* Button styles */
+.btn {
+    padding: 0.5rem 1rem;
+}
+
+.btn-lg {
+    padding: 0.75rem 1.5rem;
+}
+
+/* Improve table readability */
+.table th {
+    font-weight: 600;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+/* Footer styling */
+.footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 1.5rem;
+    margin-top: 2rem;
+}
+
+/* Add animation for loading */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.loading {
+    animation: pulse 2s infinite;
+}
+
+/* Custom badge colors for correction categories */
+.badge.bg-danger {
+    background-color: var(--bs-danger) !important;
+}
+
+.badge.bg-warning {
+    background-color: var(--bs-warning) !important;
+    color: var(--bs-dark);
+}
+
+.badge.bg-info {
+    background-color: var(--bs-info) !important;
+    color: var(--bs-dark);
+}
+
+.badge.bg-primary {
+    background-color: var(--bs-primary) !important;
+}
+
+.badge.bg-secondary {
+    background-color: var(--bs-secondary) !important;
+}
+
+/* Highlight original text and suggestions */
+.text-danger {
+    color: var(--bs-danger) !important;
+}
+
+.text-success {
+    color: var(--bs-success) !important;
+}
+
+/* How it works section styling */
+.fa-2x {
+    font-size: 1.5em;
+}
