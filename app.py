@@ -17,7 +17,11 @@ app.secret_key = os.environ.get("SESSION_SECRET", "default-secret-key")
 
 # Configure upload settings
 ALLOWED_EXTENSIONS = {'pdf', 'docx', 'txt'}
-TEMP_FOLDER = tempfile.gettempdir()
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
+TEMP_FOLDER = UPLOAD_FOLDER
+
+# Ensure upload folder exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -40,6 +44,8 @@ def analyze():
     if 'resume_file' in request.files and request.files['resume_file'].filename:
         file = request.files['resume_file']
         
+        logging.debug(f"File upload detected: {file.filename}")
+        
         if not allowed_file(file.filename):
             flash('Invalid file type. Please upload a PDF, DOCX, or TXT file.', 'danger')
             return redirect(url_for('index'))
@@ -47,10 +53,13 @@ def analyze():
         try:
             filename = secure_filename(file.filename)
             file_path = os.path.join(TEMP_FOLDER, filename)
+            logging.debug(f"Saving file to: {file_path}")
             file.save(file_path)
             
             # Parse the resume file
+            logging.debug(f"Parsing file: {file_path}")
             resume_text = parse_resume_file(file_path)
+            logging.debug(f"File parsed successfully, text length: {len(resume_text)}")
             
             # Remove the temporary file
             os.remove(file_path)
@@ -143,7 +152,13 @@ def download():
             
             # Save the PDF to a memory buffer
             file_buffer = io.BytesIO()
-            pdf.output(file_buffer)
+            
+            # Get the PDF as a string and convert to bytes
+            pdf_data = pdf.output(dest='S')
+            if isinstance(pdf_data, str):
+                pdf_data = pdf_data.encode('latin-1')
+            
+            file_buffer.write(pdf_data)
             file_buffer.seek(0)
             
             return send_file(
