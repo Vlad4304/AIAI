@@ -247,57 +247,14 @@ def generate_anschreiben(resume_text, job_description):
     """
     try:
         # Extract skills and experiences from resume
-        skills = extract_skills_from_resume(resume_text)
+        skills_info = extract_skills_from_resume(resume_text)
         
-        # Create prompt for Hugging Face API
-        prompt = f"""<s>[INST] Du bist ein professioneller Bewerbungsexperte. Erstelle ein Anschreiben auf Deutsch, basierend auf den folgenden Informationen aus dem Lebenslauf und der Stellenanzeige.
-
-Lebenslauf:
-{resume_text}
-
-Stellenanzeige:
-{job_description}
-
-Verwende die folgenden Anweisungen:
-1. Das Anschreiben sollte formell und professionell sein
-2. Betone die Übereinstimmung der Qualifikationen mit den Anforderungen
-3. Halte es präzise und auf ca. 300-350 Wörter beschränkt
-4. Verwende folgende Struktur:
-   - Anrede (falls in der Stellenanzeige ein Name genannt wird)
-   - Einleitung mit Bezug auf die Stelle
-   - Hauptteil mit Bezug auf den Lebenslauf und passenden Qualifikationen
-   - Motivation für die Stelle
-   - Abschluss mit Gesprächsbereitschaft
-   - Grußformel
-
-Achte auf eine professionelle Sprache und einen überzeugenden Stil.
-[/INST]</s>
-"""
+        # Extract job details
+        job_title = extract_job_title(job_description)
+        company_name = extract_company_name(job_description)
         
-        # Call Hugging Face API for text generation
-        payload = {
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": 1024,
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "do_sample": True
-            }
-        }
-        
-        response = requests.post(
-            HUGGINGFACE_TEXT_GEN_API_URL,
-            headers=api_headers,
-            json=payload
-        )
-        
-        response.raise_for_status()
-        
-        # Extract the generated text from the response
-        result = response.json()
-        
-        # Parse and clean the generated anschreiben
-        anschreiben = parse_anschreiben_from_response(result)
+        # Create a template-based Anschreiben
+        anschreiben = generate_template_anschreiben(resume_text, job_description, job_title, company_name, skills_info)
         
         return anschreiben
         
@@ -342,43 +299,129 @@ def extract_skills_from_resume(resume_text):
         matches = re.findall(pattern, resume_text, re.IGNORECASE)
         skills["technical_skills"].extend(matches)
     
+    # Extract education information (simplified)
+    edu_patterns = [
+        r"(?:Universität|Hochschule|Fachhochschule|University|College|Institute)[^\n.]{3,50}",
+        r"(?:Bachelor|Master|Diplom|Promotion|PhD|Dr\.)[^\n.]{3,50}"
+    ]
+    
+    for pattern in edu_patterns:
+        matches = re.findall(pattern, resume_text, re.IGNORECASE)
+        skills["education"].extend(matches)
+    
+    # Extract job experiences (simplified)
+    exp_patterns = [
+        r"(?:Software Engineer|Developer|Entwickler|Projektmanager|Manager|Consultant|Berater)[^\n.]{3,50}"
+    ]
+    
+    for pattern in exp_patterns:
+        matches = re.findall(pattern, resume_text, re.IGNORECASE)
+        skills["experience"].extend(matches)
+    
     # Remove duplicates
     skills["languages"] = list(set(skills["languages"]))
     skills["technical_skills"] = list(set(skills["technical_skills"]))
+    skills["education"] = list(set(skills["education"]))
+    skills["experience"] = list(set(skills["experience"]))
     
     return skills
 
 
-def parse_anschreiben_from_response(api_response):
+def extract_job_title(job_description):
     """
-    Parse and clean the Anschreiben from the API response.
+    Extract job title from job description.
     
     Args:
-        api_response: The API response to parse
+        job_description (str): The job description text
         
     Returns:
-        str: Cleaned Anschreiben text
+        str: Extracted job title
     """
-    try:
-        # Extract generated text from model response
-        if isinstance(api_response, list) and len(api_response) > 0:
-            generated_text = api_response[0].get("generated_text", "")
-        elif isinstance(api_response, dict):
-            generated_text = api_response.get("generated_text", "")
-        else:
-            generated_text = str(api_response)
+    # Try to find common job title patterns
+    title_patterns = [
+        r"(?:Stellenanzeige|Stelle|Position|Job)[:\s]+([^\n.]{5,50})",
+        r"(?:Wir suchen|Gesucht)[:\s]+([^\n.]{5,50})",
+        r"^([^\n.]{5,50})(?:\n|$)"
+    ]
+    
+    for pattern in title_patterns:
+        matches = re.findall(pattern, job_description, re.IGNORECASE)
+        if matches:
+            return matches[0].strip()
+    
+    # Default title if no match found
+    return "die ausgeschriebene Stelle"
+
+
+def extract_company_name(job_description):
+    """
+    Extract company name from job description.
+    
+    Args:
+        job_description (str): The job description text
         
-        # Extract the content after [/INST]
-        if "[/INST]" in generated_text:
-            anschreiben = generated_text.split("[/INST]")[1].strip()
-        else:
-            anschreiben = generated_text.strip()
+    Returns:
+        str: Extracted company name
+    """
+    # Try to find common company name patterns
+    company_patterns = [
+        r"(?:Firma|Unternehmen|Company)[:\s]+([^\n.]{2,30})",
+        r"(?:bei der|bei|at|für die|für)\s+([A-Z][^\n.]{2,30})\s+(?:GmbH|AG|SE|KG|OHG|LLC|Inc|Ltd)"
+    ]
+    
+    for pattern in company_patterns:
+        matches = re.findall(pattern, job_description, re.IGNORECASE)
+        if matches:
+            return matches[0].strip()
+    
+    # Default if no match found
+    return "Ihrem Unternehmen"
+
+
+def generate_template_anschreiben(resume_text, job_description, job_title, company_name, skills_info):
+    """
+    Generate Anschreiben using a template-based approach.
+    
+    Args:
+        resume_text (str): The resume text
+        job_description (str): The job description text
+        job_title (str): The extracted job title
+        company_name (str): The extracted company name
+        skills_info (dict): Extracted skills and information
         
-        # Remove any trailing model tokens or artifacts
-        anschreiben = re.sub(r'<\/s>$', '', anschreiben).strip()
-        
-        return anschreiben
-        
-    except Exception as e:
-        logging.error(f"Error parsing Anschreiben response: {str(e)}")
-        return "Error generating Anschreiben. Please try again."
+    Returns:
+        str: Generated Anschreiben text
+    """
+    # Get current date in German format
+    from datetime import datetime
+    current_date = datetime.now().strftime("%d.%m.%Y")
+    
+    # Get skills as comma-separated lists
+    tech_skills = ", ".join(skills_info["technical_skills"][:5]) if skills_info["technical_skills"] else "verschiedene technische Fähigkeiten"
+    languages = ", ".join(skills_info["languages"][:3]) if skills_info["languages"] else "verschiedene Sprachen"
+    
+    # Get the most recent experience
+    experience = skills_info["experience"][0] if skills_info["experience"] else "meine bisherige Berufserfahrung"
+    
+    # Template for Anschreiben
+    anschreiben_template = f"""
+{current_date}
+
+Betreff: Bewerbung als {job_title}
+
+Sehr geehrte Damen und Herren,
+
+mit großem Interesse habe ich Ihre Stellenanzeige für die Position als {job_title} bei {company_name} gelesen. Aufgrund meiner Qualifikationen und Erfahrungen bin ich überzeugt, dass ich eine wertvolle Ergänzung für Ihr Team sein kann.
+
+Wie Sie meinem Lebenslauf entnehmen können, verfüge ich über Erfahrung als {experience}. Während meiner beruflichen Laufbahn konnte ich meine Fähigkeiten in {tech_skills} kontinuierlich verbessern und erfolgreich in verschiedenen Projekten anwenden. Zudem kann ich in {languages} kommunizieren, was die Zusammenarbeit in internationalen Teams erleichtert.
+
+Die in Ihrer Stellenbeschreibung genannten Anforderungen entsprechen genau meinem Profil und meinen beruflichen Zielen. Besonders reizt mich die Möglichkeit, meine Kenntnisse bei {company_name} einzubringen und weiterzuentwickeln.
+
+Ich freue mich auf die Gelegenheit, meine Bewerbung in einem persönlichen Gespräch zu vertiefen und mehr über die Position zu erfahren. Für Rückfragen stehe ich Ihnen jederzeit gerne zur Verfügung.
+
+Mit freundlichen Grüßen,
+
+[Ihr Name]
+"""
+    
+    return anschreiben_template.strip()
