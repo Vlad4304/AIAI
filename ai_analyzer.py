@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import requests
+import traceback
 
 # Hugging Face API configuration
 HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/prithivida/grammar_error_correcter_v1"
@@ -26,21 +27,36 @@ def analyze_resume(resume_text):
         list: A list of correction suggestions with their positions and explanations
     """
     try:
+        # First check if API key is present
+        if not HUGGINGFACE_API_KEY:
+            logging.warning("No Hugging Face API key found. Using fallback analysis only.")
+            return perform_fallback_analysis(resume_text)
+            
         # Split the resume into sentences/paragraphs for better analysis
         segments = split_text_into_segments(resume_text)
         corrections = []
         
         # Process each segment
+        api_error_count = 0
         for segment in segments:
             # Skip empty segments
             if not segment.strip():
                 continue
-                
-            segment_corrections = analyze_segment(segment, resume_text)
-            corrections.extend(segment_corrections)
+            
+            try:    
+                segment_corrections = analyze_segment(segment, resume_text)
+                corrections.extend(segment_corrections)
+            except Exception as seg_error:
+                api_error_count += 1
+                logging.warning(f"Error in segment analysis: {str(seg_error)}")
+                # If we have too many consecutive errors, stop trying API
+                if api_error_count > 2:
+                    logging.error("Too many API errors. Switching to fallback analysis.")
+                    break
         
-        # If no corrections were found, perform a fallback analysis for common issues
+        # If no corrections were found or there were API issues, perform a fallback analysis for common issues
         if not corrections:
+            logging.info("No corrections from API or API failed. Using fallback analysis.")
             fallback_corrections = perform_fallback_analysis(resume_text)
             corrections.extend(fallback_corrections)
             
@@ -48,7 +64,11 @@ def analyze_resume(resume_text):
         
     except Exception as e:
         logging.error(f"Error analyzing resume: {str(e)}")
-        raise Exception(f"Error analyzing resume: {str(e)}")
+        logging.error(f"Stack trace: {traceback.format_exc()}")
+        
+        # Instead of raising the exception, return fallback corrections
+        logging.info("Using fallback analysis due to error.")
+        return perform_fallback_analysis(resume_text)
 
 def split_text_into_segments(text, max_segment_length=200):
     """
@@ -105,47 +125,65 @@ def analyze_segment(segment, full_text):
     """
     corrections = []
     
+    # Check if we have a valid API key
+    if not HUGGINGFACE_API_KEY:
+        logging.error("Missing Hugging Face API key. Using fallback analysis.")
+        return []
+    
     try:
         # Call Hugging Face API
         payload = {"inputs": segment}
+        logging.debug(f"Calling Hugging Face API with payload length: {len(segment)}")
         response = requests.post(HUGGINGFACE_API_URL, headers=api_headers, json=payload)
+        
+        # Check for authentication errors specifically
+        if response.status_code == 401:
+            logging.error("Hugging Face API authentication failed: Invalid API key")
+            return []
+        
         response.raise_for_status()
         
         # Process API response
-        corrected_text = response.json()[0]["generated_text"]
+        response_json = response.json()
+        logging.debug(f"Received API response: {response_json}")
         
-        # Регулярное выражение для игнорирования изменений в точках, 
-        # где модель меняет только точку или пробел + точку
-        import re
-        segment_normalized = re.sub(r'\s*\.', '.', segment)
-        corrected_normalized = re.sub(r'\s*\.', '.', corrected_text)
-        
-        # If there's a difference between original and corrected text
-        # except for just period-related changes
-        if segment_normalized != corrected_normalized and segment != corrected_text:
-            # Check if the only difference is periods/dots
-            # Remove dots and compare to avoid false corrections for dots
-            segment_no_dots = segment.replace('.', '')
-            corrected_no_dots = corrected_text.replace('.', '')
+        if isinstance(response_json, list) and len(response_json) > 0 and "generated_text" in response_json[0]:
+            corrected_text = response_json[0]["generated_text"]
             
-            # If they're identical after removing dots, don't create a correction
-            if segment_no_dots == corrected_no_dots:
-                return corrections
+            # Регулярное выражение для игнорирования изменений в точках, 
+            # где модель меняет только точку или пробел + точку
+            import re
+            segment_normalized = re.sub(r'\s*\.', '.', segment)
+            corrected_normalized = re.sub(r'\s*\.', '.', corrected_text)
+            
+            # If there's a difference between original and corrected text
+            # except for just period-related changes
+            if segment_normalized != corrected_normalized and segment != corrected_text:
+                # Check if the only difference is periods/dots
+                # Remove dots and compare to avoid false corrections for dots
+                segment_no_dots = segment.replace('.', '')
+                corrected_no_dots = corrected_text.replace('.', '')
                 
-            # Find the position in the full text
-            start_pos = full_text.find(segment)
-            end_pos = start_pos + len(segment)
-            
-            # Create correction object
-            correction = {
-                "original": segment,
-                "position": {"start": start_pos, "end": end_pos},
-                "suggestion": corrected_text,
-                "explanation": "Grammar and spelling improvement",
-                "category": "grammar"
-            }
-            
-            corrections.append(correction)
+                # If they're identical after removing dots, don't create a correction
+                if segment_no_dots == corrected_no_dots:
+                    return corrections
+                    
+                # Find the position in the full text
+                start_pos = full_text.find(segment)
+                end_pos = start_pos + len(segment)
+                
+                # Create correction object
+                correction = {
+                    "original": segment,
+                    "position": {"start": start_pos, "end": end_pos},
+                    "suggestion": corrected_text,
+                    "explanation": "Grammar and spelling improvement",
+                    "category": "grammar"
+                }
+                
+                corrections.append(correction)
+        else:
+            logging.warning(f"Unexpected API response format: {response_json}")
             
     except requests.exceptions.RequestException as e:
         logging.warning(f"Hugging Face API request failed: {str(e)}")
@@ -153,6 +191,7 @@ def analyze_segment(segment, full_text):
         logging.warning(f"Error parsing Hugging Face API response: {str(e)}")
     except Exception as e:
         logging.warning(f"Unexpected error in segment analysis: {str(e)}")
+        logging.error(f"Exception traceback: {traceback.format_exc()}")
     
     return corrections
 
@@ -244,6 +283,19 @@ def generate_anschreiben(resume_text, job_description):
     Returns:
         str: Generated cover letter text
     """
+    # First check if API key is present
+    if not HUGGINGFACE_API_KEY:
+        logging.warning("No Hugging Face API key found. Using template-based Anschreiben generation.")
+        try:
+            skills_info = extract_skills_from_resume(resume_text)
+            job_title = extract_job_title(job_description)
+            company_name = extract_company_name(job_description)
+            return generate_template_anschreiben(resume_text, job_description, job_title, company_name, skills_info)
+        except Exception as e:
+            logging.error(f"Template fallback error: {str(e)}")
+            logging.error(f"Stack trace: {traceback.format_exc()}")
+            return "Fehler bei der Erstellung des Anschreibens. Bitte versuchen Sie es später erneut."
+    
     try:
         # Extract skills and experiences from resume
         skills = extract_skills_from_resume(resume_text)
@@ -284,11 +336,20 @@ Achte auf eine professionelle Sprache und einen überzeugenden Stil.
             }
         }
         
+        logging.debug(f"Calling Hugging Face API for Anschreiben generation")
         response = requests.post(
             HUGGINGFACE_TEXT_GEN_API_URL,
             headers=api_headers,
             json=payload
         )
+        
+        # Check for authentication errors specifically
+        if response.status_code == 401:
+            logging.error("Hugging Face API authentication failed: Invalid API key")
+            skills_info = extract_skills_from_resume(resume_text)
+            job_title = extract_job_title(job_description)
+            company_name = extract_company_name(job_description)
+            return generate_template_anschreiben(resume_text, job_description, job_title, company_name, skills_info)
         
         response.raise_for_status()
         
@@ -302,6 +363,7 @@ Achte auf eine professionelle Sprache und einen überzeugenden Stil.
         
     except Exception as e:
         logging.error(f"Error generating Anschreiben: {str(e)}")
+        logging.error(f"Stack trace: {traceback.format_exc()}")
         # Если API не работает, используем шаблонный подход как запасной вариант
         try:
             logging.info("Using template-based approach as fallback")
@@ -311,7 +373,8 @@ Achte auf eine professionelle Sprache und einen überzeugenden Stil.
             return generate_template_anschreiben(resume_text, job_description, job_title, company_name, skills_info)
         except Exception as template_err:
             logging.error(f"Error in template fallback: {str(template_err)}")
-            raise Exception(f"Error generating Anschreiben: {str(e)}")
+            logging.error(f"Template fallback stack trace: {traceback.format_exc()}")
+            return "Fehler bei der Erstellung des Anschreibens. Bitte versuchen Sie es später erneut."
 
 
 def extract_skills_from_resume(resume_text):

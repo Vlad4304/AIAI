@@ -1,6 +1,8 @@
 import os
 import io
 import logging
+import traceback
+import sys
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
 from werkzeug.utils import secure_filename
 import tempfile
@@ -9,7 +11,9 @@ from resume_parser import parse_resume_file, parse_resume_text
 from ai_analyzer import analyze_resume, generate_anschreiben
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG, 
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    stream=sys.stdout)
 
 # Initialize Flask app
 app = Flask(__name__)
