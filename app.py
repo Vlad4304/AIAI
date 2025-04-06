@@ -8,7 +8,7 @@ from werkzeug.utils import secure_filename
 import tempfile
 import json
 from resume_parser import parse_resume_file, parse_resume_text
-from ai_analyzer import analyze_resume, generate_anschreiben
+from ai_analyzer import analyze_resume, generate_anschreiben, score_resume
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, 
@@ -40,7 +40,7 @@ def allowed_file(filename):
 
 @app.route('/')
 def index():
-    # Clear any previous resume data from session
+    # Clear any previous CV data from session
     if 'resume_text' in session:
         session.pop('resume_text')
     if 'corrections' in session:
@@ -49,6 +49,8 @@ def index():
         session.pop('anschreiben')
     if 'job_description' in session:
         session.pop('job_description')
+    if 'resume_score' in session:
+        session.pop('resume_score')
     
     return render_template('index.html')
 
@@ -72,7 +74,7 @@ def analyze():
             logging.debug(f"Saving file to: {file_path}")
             file.save(file_path)
             
-            # Parse the resume file
+            # Parse the CV file
             logging.debug(f"Parsing file: {file_path}")
             resume_text = parse_resume_file(file_path)
             logging.debug(f"File parsed successfully, text length: {len(resume_text)}")
@@ -90,19 +92,22 @@ def analyze():
         resume_text = parse_resume_text(resume_text)
     
     else:
-        flash('Please upload a file or paste your resume text.', 'warning')
+        flash('Please upload a file or paste your CV text.', 'warning')
         return redirect(url_for('index'))
     
-    # Check if resume text is too short
+    # Check if CV text is too short
     if len(resume_text) < 50:
-        flash('The resume content is too short or could not be properly extracted. Please try again.', 'warning')
+        flash('The CV content is too short or could not be properly extracted. Please try again.', 'warning')
         return redirect(url_for('index'))
     
     try:
-        # Analyze the resume with OpenAI
-        corrections = analyze_resume(resume_text)
+        # Get language preference from form
+        language = request.form.get('language', 'en')
         
-        # Store the resume and corrections in the session
+        # Analyze the CV with AI using specified language
+        corrections = analyze_resume(resume_text, language)
+        
+        # Store the CV, corrections, and language in the session
         # Limit the number of corrections to prevent session size issues
         max_corrections = 20
         if len(corrections) > max_corrections:
@@ -111,40 +116,62 @@ def analyze():
             
         session['resume_text'] = resume_text
         session['corrections'] = corrections
+        session['language'] = language
         
         return redirect(url_for('results'))
         
     except Exception as e:
-        flash(f'Error analyzing resume: {str(e)}', 'danger')
+        flash(f'Error analyzing CV: {str(e)}', 'danger')
         logging.error(f"AI analysis error: {str(e)}")
         return redirect(url_for('index'))
 
 @app.route('/results')
 def results():
-    # Check if resume and corrections are in session
+    # Check if CV and corrections are in session
     if 'resume_text' not in session or 'corrections' not in session:
-        flash('Please submit a resume for analysis first.', 'warning')
+        flash('Please submit a CV for analysis first.', 'warning')
         return redirect(url_for('index'))
     
     resume_text = session['resume_text']
     corrections = session['corrections']
     
-    return render_template('result.html', resume_text=resume_text, corrections=corrections)
+    # Get CV score if not already in session
+    score_data = session.get('resume_score', None)
+    if not score_data:
+        try:
+            # Get the language preference from the session
+            language = session.get('language', 'en')
+            score_data = score_resume(resume_text, language)
+            session['resume_score'] = score_data
+        except Exception as e:
+            logging.error(f"Error scoring CV: {str(e)}")
+            score_data = {
+                "overall": 0,
+                "categories": {
+                    "content": 0,
+                    "format": 0,
+                    "language": 0,
+                    "conciseness": 0
+                },
+                "summary": "Error in evaluation" if language == 'en' else "Fehler bei der Bewertung"
+            }
+    
+    return render_template('result.html', resume_text=resume_text, corrections=corrections, score=score_data)
 
 @app.route('/download', methods=['POST'])
 def download():
     if 'resume_text' not in session:
-        flash('No resume data available for download.', 'warning')
+        flash('No CV data available for download.', 'warning')
         return redirect(url_for('index'))
     
-    # Get the corrected resume text from the form
+    # Get the corrected CV text from the form
     corrected_text = request.form.get('corrected_text', '')
     
     if not corrected_text:
         flash('No content to download.', 'warning')
         return redirect(url_for('results'))
     
-    # Create a temporary file with the corrected resume
+    # Create a temporary file with the corrected CV
     format_type = request.form.get('format', 'txt')
     
     if format_type == 'txt':
@@ -156,7 +183,7 @@ def download():
         return send_file(
             file_buffer,
             as_attachment=True,
-            download_name='corrected_resume.txt',
+            download_name='corrected_cv.txt',
             mimetype='text/plain'
         )
     else:  # PDF
@@ -217,7 +244,7 @@ def download():
             return send_file(
                 file_buffer,
                 as_attachment=True,
-                download_name='corrected_resume.pdf',
+                download_name='corrected_cv.pdf',
                 mimetype='application/pdf'
             )
         except Exception as e:
@@ -235,7 +262,7 @@ def apply_corrections():
         selected_corrections = data['selected_corrections']
         resume_text = data['resume_text']
         
-        # Apply selected corrections to the resume text
+        # Apply selected corrections to the CV text
         # Sort corrections in reverse order to avoid offset issues
         sorted_corrections = sorted(selected_corrections, key=lambda x: x['position']['start'], reverse=True)
         
@@ -252,12 +279,12 @@ def apply_corrections():
 @app.route('/anschreiben', methods=['GET', 'POST'])
 def anschreiben_page():
     if request.method == 'GET':
-        # Check if resume is in session
+        # Check if CV is in session
         if 'resume_text' not in session:
-            flash('Please submit a resume for analysis first.', 'warning')
+            flash('Please submit a CV for analysis first.', 'warning')
             return redirect(url_for('index'))
             
-        # Get resume from session
+        # Get CV from session
         resume_text = session.get('resume_text', '')
         anschreiben_text = session.get('anschreiben', '')
         job_description = session.get('job_description', '')
@@ -268,12 +295,12 @@ def anschreiben_page():
                               anschreiben=anschreiben_text)
     
     elif request.method == 'POST':
-        # Get resume and job description
+        # Get CV and job description
         resume_text = session.get('resume_text', '')
         job_description = request.form.get('job_description', '')
         
         if not resume_text:
-            flash('No resume found. Please upload your resume first.', 'warning')
+            flash('No CV found. Please upload your CV first.', 'warning')
             return redirect(url_for('index'))
             
         if not job_description or len(job_description) < 50:
@@ -284,7 +311,7 @@ def anschreiben_page():
                                   anschreiben='')
         
         try:
-            # Generate anschreiben using Hugging Face API
+            # Generate anschreiben using DeepInfra API
             anschreiben_text = generate_anschreiben(resume_text, job_description)
             
             # Store in session
@@ -297,12 +324,26 @@ def anschreiben_page():
                                   anschreiben=anschreiben_text)
                                   
         except Exception as e:
-            flash(f'Error generating Anschreiben: {str(e)}', 'danger')
-            logging.error(f"Anschreiben generation error: {str(e)}")
+            error_msg = str(e)
+            # Add a more user-friendly message for API errors
+            if "API error: 401" in error_msg:
+                flash('Authentication error with DeepInfra API. Using template-based generation instead.', 'warning')
+            else:
+                flash(f'Error generating Anschreiben: {error_msg}', 'danger')
+                
+            logging.error(f"Anschreiben generation error: {error_msg}")
+            logging.error(traceback.format_exc())
+            
             return render_template('anschreiben.html', 
                                   resume_text=resume_text,
                                   job_description=job_description,
                                   anschreiben='')
+
+
+@app.route('/donate')
+def donate():
+    """Display the donation page."""
+    return render_template('donate.html')
 
 
 @app.route('/download_anschreiben', methods=['POST'])
@@ -397,6 +438,3 @@ def download_anschreiben():
             flash(f'Error generating PDF: {str(e)}', 'danger')
             logging.error(f"PDF generation error: {str(e)}")
             return redirect(url_for('anschreiben_page'))
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
